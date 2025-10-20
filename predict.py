@@ -38,6 +38,47 @@ class Predictor(BasePredictor):
             use_auth_token="YOUR HF TOKEN",
         ).to(torch.device("cuda"))
 
+    # --- Custom domain exceptions ---
+    class FileDownloadError(Exception):
+        pass
+
+    class PartialM4AFileError(Exception):
+        pass
+
+    class InvalidFileError(Exception):
+        pass
+
+    class FFmpegGenericError(Exception):
+        pass
+
+    def _run_ffmpeg_and_map_errors(self, args):
+        """Run ffmpeg, capture stderr, and map known errors to custom exceptions.
+
+        Args should be a list of ffmpeg CLI args, including "ffmpeg" as the first element.
+        """
+        # Capture stderr to parse error messages
+        result = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        stderr_text = (result.stderr or b"").decode("utf-8", errors="ignore")
+
+        # Map specific ffmpeg error substrings to custom exceptions
+        if "moov atom not found" in stderr_text:
+            raise self.PartialM4AFileError("ffmpeg error: moov atom not found")
+        if "Invalid data found when processing input" in stderr_text:
+            raise self.InvalidFileError(
+                "ffmpeg error: Invalid data found when processing input"
+            )
+
+        if result.returncode != 0:
+            # Generic ffmpeg failure: surface stderr for debugging
+            raise self.FFmpegGenericError(f"ffmpeg failed (code {result.returncode}): {stderr_text}")
+
+        return result
+
     def predict(
         self,
         file_string: str = Input(
@@ -76,9 +117,10 @@ class Predictor(BasePredictor):
             temp_wav_filename = f"temp-{time.time_ns()}.wav"
 
             if file is not None:
-                subprocess.run(
+                self._run_ffmpeg_and_map_errors(
                     [
                         "ffmpeg",
+                        "-y",
                         "-i",
                         file,
                         "-ar",
@@ -92,14 +134,20 @@ class Predictor(BasePredictor):
                 )
 
             elif file_url is not None:
-                response = requests.get(file_url)
+                # Robust download: follow redirects, timeout, and raise on HTTP errors
+                try:
+                    response = requests.get(file_url, allow_redirects=True, timeout=30)
+                    response.raise_for_status()
+                except Exception as e:
+                    raise self.FileDownloadError(f"Failed to download file from URL: {e}")
                 temp_audio_filename = f"temp-{time.time_ns()}.audio"
                 with open(temp_audio_filename, "wb") as file:
                     file.write(response.content)
 
-                subprocess.run(
+                self._run_ffmpeg_and_map_errors(
                     [
                         "ffmpeg",
+                        "-y",
                         "-i",
                         temp_audio_filename,
                         "-ar",
@@ -122,9 +170,10 @@ class Predictor(BasePredictor):
                 with open(temp_audio_filename, "wb") as f:
                     f.write(audio_data)
 
-                subprocess.run(
+                self._run_ffmpeg_and_map_errors(
                     [
                         "ffmpeg",
+                        "-y",
                         "-i",
                         temp_audio_filename,
                         "-ar",
@@ -156,8 +205,11 @@ class Predictor(BasePredictor):
                 num_speakers=detected_num_speakers,
             )
 
+        except (FileNotFoundError, self.FileDownloadError, self.PartialM4AFileError, self.InvalidFileError):
+            # Surface domain-specific and file-not-found errors unchanged
+            raise
         except Exception as e:
-            raise RuntimeError("Error Running inference with local model", e)
+            raise RuntimeError("Error running inference with local model") from e
 
         finally:
             # Clean up
