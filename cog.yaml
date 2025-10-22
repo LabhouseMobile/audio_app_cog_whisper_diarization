@@ -18,6 +18,9 @@ build:
 
   python_requirements: requirements.txt
 
+  env:
+    - "HF_TOKEN"
+
   # commands run after the environment is setup
   run:
     - "echo env is ready!"

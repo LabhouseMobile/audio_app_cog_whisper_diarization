@@ -33,9 +33,16 @@ class Predictor(BasePredictor):
             device="cuda",
             compute_type="float16",
         )
+
+        # Get the Hugging Face token from the environment variable
+        hf_token = os.environ.get("HF_TOKEN")        
+        if not hf_token:
+            print("Warning: HF_TOKEN environment variable not set. "
+                  "Downloading the diarization model might fail if it's gated.")
+
         self.diarization_model = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token="YOUR HF TOKEN",
+            use_auth_token=hf_token,
         ).to(torch.device("cuda"))
 
     # --- Custom domain exceptions ---
