@@ -33,10 +33,10 @@ jobs:
         with:
           token: ${{ secrets.REPLICATE_API_TOKEN }}
           cog-version: "v0.16.8"
-
-
+      
       - name: Push to Replicate
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }} 
         run: |
-          cog push r8.im/${{ inputs.model_name }}
+          # Use the documented --secret flag
+          cog push --secret id=HF_TOKEN,env=HF_TOKEN r8.im/${{ inputs.model_name }}
