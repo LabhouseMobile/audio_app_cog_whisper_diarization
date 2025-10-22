@@ -35,10 +35,14 @@ class Predictor(BasePredictor):
         )
 
         # Get the Hugging Face token from the environment variable
-        hf_token = os.environ.get("HF_TOKEN")        
+        hf_token = os.environ.get("HF_TOKEN")
+        if not hf_token and os.path.exists("/run/secrets/HF_TOKEN"):
+            with open("/run/secrets/HF_TOKEN") as f:
+                hf_token = f.read().strip()
         if not hf_token:
-            print("Warning: HF_TOKEN environment variable not set. "
-                  "Downloading the diarization model might fail if it's gated.")
+            print("Warning: HF_TOKEN not set; diarization model download may fail.")
+
+
 
         self.diarization_model = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",

@@ -38,9 +38,5 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }} 
         run: |
-          # Write the secret to a temporary file
-          echo -n "$HF_TOKEN" > /tmp/hf_token
-          # Pass the secret file to cog push
-          cog push --secret id=HF_TOKEN,src=/tmp/hf_token r8.im/${{ inputs.model_name }}
-          # Clean up
-          rm /tmp/hf_token
+          cog push --secret id=HF_TOKEN,src=/run/secrets/HF_TOKEN r8.im/${{ inputs.model_name }}
+

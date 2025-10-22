@@ -18,13 +18,13 @@ build:
 
   python_requirements: requirements.txt
 
-  # commands run after the environment is setup
-  run:
-    - command: "export HF_TOKEN=$(cat /run/secrets/HF_TOKEN) && echo env is ready!"
-      mounts:
-        - type: secret
-          id: HF_TOKEN
-          target: /run/secrets/HF_TOKEN
+  # # commands run after the environment is setup
+  # run:
+  #   - command: "export HF_TOKEN=$(cat /run/secrets/HF_TOKEN) && echo env is ready!"
+  #     mounts:
+  #       - type: secret
+  #         id: HF_TOKEN
+  #         target: /run/secrets/HF_TOKEN
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"
