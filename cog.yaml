@@ -18,13 +18,14 @@ build:
 
   python_requirements: requirements.txt
 
-  environment:
-    - HF_TOKEN=""
 
   # commands run after the environment is setup
   run:
     - "echo env is ready!"
     # - "echo another command if needed"
+
+environment:
+    - HF_TOKEN=""
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"
