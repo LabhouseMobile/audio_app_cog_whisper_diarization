@@ -38,5 +38,5 @@ jobs:
         run: |
           echo -n "$HF_TOKEN" > hf_token.txt
           echo "HF_TOKEN length: ${#HF_TOKEN}"
-          cog push r8.im/${{ inputs.model_name }} --secret HF_TOKEN=hf_token.txt
+          cog push r8.im/${{ inputs.model_name }} --secret id=HF_TOKEN,src=hf_token.txt
 
