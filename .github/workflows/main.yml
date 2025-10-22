@@ -39,6 +39,8 @@ jobs:
           # Write Hugging Face token to a temp file
           echo -n "$HF_TOKEN" > /tmp/hf_token
 
+          echo "HF_TOKEN length: ${#HF_TOKEN}"
+
           # Push model with the secret
           cog push --secret id=HF_TOKEN,src=/tmp/hf_token r8.im/${{ inputs.model_name }}
 
