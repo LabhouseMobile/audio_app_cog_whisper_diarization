@@ -15,8 +15,6 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          # this might remove tools that are actually needed,
-          # if set to "true" but frees about 6 GB
           tool-cache: false
           android: true
           dotnet: true
@@ -36,7 +34,13 @@ jobs:
       
       - name: Push to Replicate
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }} 
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          cog push --secret id=HF_TOKEN,src=/run/secrets/HF_TOKEN r8.im/${{ inputs.model_name }}
+          # Write Hugging Face token to a temp file
+          echo -n "$HF_TOKEN" > /tmp/hf_token
 
+          # Push model with the secret
+          cog push --secret id=HF_TOKEN,src=/tmp/hf_token r8.im/${{ inputs.model_name }}
+
+          # Clean up temp file
+          rm /tmp/hf_token
