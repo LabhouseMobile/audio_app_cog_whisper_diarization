@@ -31,12 +31,18 @@ jobs:
         with:
           token: ${{ secrets.REPLICATE_API_TOKEN }}
           cog-version: "v0.16.8"
-      
-      - name: Push to Replicate
+
+      - name: Inject HF Token into predict.py
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          echo "HF_TOKEN length: ${#HF_TOKEN}"
-          echo -n "$HF_TOKEN" > hf_token.txt
-          cog push r8.im/${{ inputs.model_name }} --secret id=HF_TOKEN,src=hf_token.txt
+          # Use sed to find and replace the placeholder
+          # -i = in-place edit
+          # "..." = use double quotes to allow $HF_TOKEN shell variable expansion
+          # s|...|...|g = substitute, using | as a delimiter (safer than /)
+          sed -i "s|HF_AUTH_TOKEN|$HF_TOKEN|g" predict.py
+      
+      - name: Push to Replicate
+        run: |
+          cog push r8.im/${{ inputs.model_name }}
 
