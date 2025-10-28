@@ -52,9 +52,6 @@ class Predictor(BasePredictor):
     class FFmpegGenericError(Exception):
         pass
 
-    class EmptyDiarizationError(Exception):
-        pass
-
     def _run_ffmpeg_and_map_errors(self, args):
         """Run ffmpeg, capture stderr, and map known errors to custom exceptions.
 
@@ -209,11 +206,11 @@ class Predictor(BasePredictor):
                 num_speakers=detected_num_speakers,
             )
 
-        except (FileNotFoundError, self.FileDownloadError, self.PartialM4AFileError, self.InvalidFileError, self.EmptyDiarizationError):
+        except (FileNotFoundError, self.FileDownloadError, self.PartialM4AFileError, self.InvalidFileError):
             # Surface domain-specific and file-not-found errors unchanged
             raise
         except Exception as e:
-            raise RuntimeError("Error running inference with local model", e) from e
+            raise RuntimeError(f"Error running inference with local model: {e}") from e
 
         finally:
             # Clean up
@@ -306,9 +303,8 @@ class Predictor(BasePredictor):
         # Debug: Check if diarization produced any results
         print(f"Diarization produced {len(diarize_segments)} segments")
         if len(diarize_segments) == 0:
-            raise self.EmptyDiarizationError(
-                "empty-speech"
-            )
+            print("Warning: No diarization segments found. Returning empty results.")
+            return [], 0, transcript_info.language
 
         # Process each segment and its words
         final_segments = []
