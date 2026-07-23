@@ -45,6 +45,46 @@ class Runner(BaseRunner):
         )
         logger.info("Diarization model loaded")
 
+    # --- Custom domain exceptions ---
+    class FileDownloadError(Exception):
+        pass
+
+    class PartialM4AFileError(Exception):
+        pass
+
+    class InvalidFileError(Exception):
+        pass
+
+    class FFmpegGenericError(Exception):
+        pass
+
+    def _run_ffmpeg_and_map_errors(self, args):
+        """Run ffmpeg, capture stderr, and map known errors to custom exceptions.
+
+        Args should be a list of ffmpeg CLI args, including "ffmpeg" as the first element.
+        """
+        # Capture stderr to parse error messages
+        result = subprocess.run(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        stderr_text = (result.stderr or b"").decode("utf-8", errors="ignore")
+
+        # Map specific ffmpeg error substrings to custom exceptions
+        if "moov atom not found" in stderr_text:
+            raise self.PartialM4AFileError("ffmpeg error: moov atom not found")
+        if "Invalid data found when processing input" in stderr_text:
+            raise self.InvalidFileError(
+                "ffmpeg error: Invalid data found when processing input"
+            )
+
+        if result.returncode != 0:
+            # Generic ffmpeg failure: surface stderr for debugging
+            raise self.FFmpegGenericError(f"ffmpeg failed (code {result.returncode}): {stderr_text}")
+
+        return result
+
     def run(
         self,
         file_string: Optional[str] = Input(
@@ -98,7 +138,7 @@ class Runner(BaseRunner):
             log_audio_metadata(source_path)
 
             normalize_start_time = time.time()
-            audio_duration = normalize_audio(source_path, wav_path)
+            audio_duration = self.normalize_audio(source_path, wav_path)
             logger.info("Audio normalized in %.2fs", time.time() - normalize_start_time)
             logger.info("Audio duration: %.2fs", audio_duration)
 
@@ -115,20 +155,6 @@ class Runner(BaseRunner):
                 language=detected_language,
                 num_speakers=detected_num_speakers,
             )
-
-        except (FileNotFoundError, self.FileDownloadError, self.PartialM4AFileError, self.InvalidFileError):
-            # Surface domain-specific and file-not-found errors unchanged
-            raise
-        except Exception as e:
-            raise RuntimeError("Error running inference with local model") from e
-
-        finally:
-            # Clean up
-            if os.path.exists(temp_wav_filename):
-                os.remove(temp_wav_filename)
-
-    def convert_time(self, secs, offset_seconds=0):
-        return datetime.timedelta(seconds=(round(secs) + offset_seconds))
 
     def speech_to_text(
         self,
@@ -192,6 +218,26 @@ class Runner(BaseRunner):
         )
         return final_segments, len(unique_speakers), transcript_info.language
 
+    def normalize_audio(self, input_path: LocalPath, wav_path: LocalPath) -> float:
+        self._run_ffmpeg_and_map_errors(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(input_path),
+                "-map",
+                "0:a:0",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                str(wav_path),
+            ],
+        )
+        return get_duration(wav_path)
+
 
 def download_file(url: str, path: LocalPath) -> None:
     response = requests.get(url, timeout=120)
@@ -202,28 +248,6 @@ def download_file(url: str, path: LocalPath) -> None:
 def write_base64_file(file_string: str, path: LocalPath) -> None:
     encoded = file_string.split(",", 1)[1] if "," in file_string else file_string
     path.write_bytes(base64.b64decode(encoded))
-
-
-def normalize_audio(input_path: LocalPath, wav_path: LocalPath) -> float:
-    self._run_ffmpeg_and_map_errors(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(input_path),
-            "-map",
-            "0:a:0",
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            "-c:a",
-            "pcm_s16le",
-            str(wav_path),
-        ],
-        check=True,
-    )
-    return get_duration(wav_path)
 
 
 def get_duration(path: LocalPath) -> float:
