@@ -1,5 +1,6 @@
 import base64
 import logging
+import os
 import re
 import subprocess
 import tempfile
@@ -14,11 +15,15 @@ import torch
 import torchaudio
 from cog import BaseModel, BaseRunner, Input, Path
 from faster_whisper import WhisperModel
-from faster_whisper.vad import VadOptions
 from pyannote.audio import Pipeline
 
-WHISPER_MODEL_PATH = "/models/whisper/large-v3-turbo"
-DIARIZATION_MODEL_PATH = "/models/diarization/pyannote--speaker-diarization-community-1"
+WHISPER_MODEL_PATH = os.environ.get(
+    "WHISPER_MODEL_PATH", "/models/whisper/large-v3-turbo"
+)
+DIARIZATION_MODEL_PATH = os.environ.get(
+    "DIARIZATION_MODEL_PATH",
+    "/models/diarization/pyannote--speaker-diarization-community-1",
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -71,6 +76,9 @@ class Runner(BaseRunner):
         )
         stderr_text = (result.stderr or b"").decode("utf-8", errors="ignore")
 
+        if result.returncode == 0:
+            return result
+
         # Map specific ffmpeg error substrings to custom exceptions
         if "moov atom not found" in stderr_text:
             raise self.PartialM4AFileError("ffmpeg error: moov atom not found")
@@ -79,11 +87,10 @@ class Runner(BaseRunner):
                 "ffmpeg error: Invalid data found when processing input"
             )
 
-        if result.returncode != 0:
-            # Generic ffmpeg failure: surface stderr for debugging
-            raise self.FFmpegGenericError(f"ffmpeg failed (code {result.returncode}): {stderr_text}")
-
-        return result
+        # Generic ffmpeg failure: surface stderr for debugging
+        raise self.FFmpegGenericError(
+            f"ffmpeg failed (code {result.returncode}): {stderr_text}"
+        )
 
     def run(
         self,
@@ -139,6 +146,10 @@ class Runner(BaseRunner):
 
             normalize_start_time = time.time()
             audio_duration = self.normalize_audio(source_path, wav_path)
+            if audio_duration <= 0.1:
+                raise self.InvalidFileError(
+                    "ffmpeg error: Invalid data found when processing input"
+                )
             logger.info("Audio normalized in %.2fs", time.time() - normalize_start_time)
             logger.info("Audio duration: %.2fs", audio_duration)
 
@@ -171,14 +182,7 @@ class Runner(BaseRunner):
         options = {
             "language": language,
             "beam_size": 5,
-            "vad_filter": True,
-            "vad_parameters": VadOptions(
-                max_speech_duration_s=self.model.feature_extractor.chunk_length,
-                min_speech_duration_ms=100,
-                speech_pad_ms=100,
-                threshold=0.25,
-                neg_threshold=0.2,
-            ),
+            "vad_filter": False,
             "word_timestamps": True,
             "initial_prompt": prompt,
             "language_detection_segments": 1,
@@ -223,6 +227,10 @@ class Runner(BaseRunner):
             [
                 "ffmpeg",
                 "-y",
+                "-err_detect",
+                "ignore_err",
+                "-fflags",
+                "+discardcorrupt",
                 "-i",
                 str(input_path),
                 "-map",
