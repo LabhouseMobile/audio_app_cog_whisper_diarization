@@ -4,6 +4,7 @@ import datetime
 import subprocess
 import os
 import requests
+import tempfile
 import time
 import torch
 import re
@@ -121,7 +122,7 @@ class Predictor(BasePredictor):
         temp_audio_filename = None
 
         try:
-            temp_wav_filename = os.path.join("/tmp", f"temp-{time.time_ns()}.wav")
+            temp_wav_filename = os.path.join(tempfile.gettempdir(), f"temp-{time.time_ns()}.wav")
 
             if file is not None:
                 self._run_ffmpeg_and_map_errors(
@@ -147,7 +148,7 @@ class Predictor(BasePredictor):
                     response.raise_for_status()
                 except Exception as e:
                     raise self.FileDownloadError(f"Failed to download file from URL: {e}")
-                temp_audio_filename = os.path.join("/tmp", f"temp-{time.time_ns()}.audio")
+                temp_audio_filename = os.path.join(tempfile.gettempdir(), f"temp-{time.time_ns()}.audio")
                 with open(temp_audio_filename, "wb") as downloaded_file:
                     downloaded_file.write(response.content)
 
@@ -171,7 +172,7 @@ class Predictor(BasePredictor):
                 audio_data = base64.b64decode(
                     file_string.split(",")[1] if "," in file_string else file_string
                 )
-                temp_audio_filename = os.path.join("/tmp", f"temp-{time.time_ns()}.audio")
+                temp_audio_filename = os.path.join(tempfile.gettempdir(), f"temp-{time.time_ns()}.audio")
                 with open(temp_audio_filename, "wb") as f:
                     f.write(audio_data)
 
