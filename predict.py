@@ -4,6 +4,7 @@ import datetime
 import subprocess
 import os
 import requests
+import tempfile
 import time
 import torch
 import re
@@ -80,6 +81,10 @@ class Predictor(BasePredictor):
 
         return result
 
+    def _safe_remove(self, path):
+        if path and os.path.exists(path):
+            os.remove(path)
+
     def predict(
         self,
         file_string: str = Input(
@@ -113,9 +118,11 @@ class Predictor(BasePredictor):
         """ if sum([file_string is not None, file_url is not None, file is not None]) != 1:
             raise RuntimeError("Provide either file_string, file or file_url") """
 
+        temp_wav_filename = None
+        temp_audio_filename = None
+
         try:
-            # Generate a temporary filename
-            temp_wav_filename = f"temp-{time.time_ns()}.wav"
+            temp_wav_filename = os.path.join(tempfile.gettempdir(), f"temp-{time.time_ns()}.wav")
 
             if file is not None:
                 self._run_ffmpeg_and_map_errors(
@@ -141,9 +148,9 @@ class Predictor(BasePredictor):
                     response.raise_for_status()
                 except Exception as e:
                     raise self.FileDownloadError(f"Failed to download file from URL: {e}")
-                temp_audio_filename = f"temp-{time.time_ns()}.audio"
-                with open(temp_audio_filename, "wb") as file:
-                    file.write(response.content)
+                temp_audio_filename = os.path.join(tempfile.gettempdir(), f"temp-{time.time_ns()}.audio")
+                with open(temp_audio_filename, "wb") as downloaded_file:
+                    downloaded_file.write(response.content)
 
                 self._run_ffmpeg_and_map_errors(
                     [
@@ -161,13 +168,11 @@ class Predictor(BasePredictor):
                     ]
                 )
 
-                if os.path.exists(temp_audio_filename):
-                    os.remove(temp_audio_filename)
             elif file_string is not None:
                 audio_data = base64.b64decode(
                     file_string.split(",")[1] if "," in file_string else file_string
                 )
-                temp_audio_filename = f"temp-{time.time_ns()}.audio"
+                temp_audio_filename = os.path.join(tempfile.gettempdir(), f"temp-{time.time_ns()}.audio")
                 with open(temp_audio_filename, "wb") as f:
                     f.write(audio_data)
 
@@ -186,9 +191,6 @@ class Predictor(BasePredictor):
                         temp_wav_filename,
                     ]
                 )
-
-                if os.path.exists(temp_audio_filename):
-                    os.remove(temp_audio_filename)
 
             segments, detected_num_speakers, detected_language = self.speech_to_text(
                 temp_wav_filename,
@@ -213,9 +215,8 @@ class Predictor(BasePredictor):
             raise RuntimeError("Error running inference with local model") from e
 
         finally:
-            # Clean up
-            if os.path.exists(temp_wav_filename):
-                os.remove(temp_wav_filename)
+            self._safe_remove(temp_audio_filename)
+            self._safe_remove(temp_wav_filename)
 
     def convert_time(self, secs, offset_seconds=0):
         return datetime.timedelta(seconds=(round(secs) + offset_seconds))
